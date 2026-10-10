@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net6.0</TargetFramework><AssemblyName>CommNetLunaBridge.Server</AssemblyName></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+    <Reference Include="Server"><HintPath>$(LmpServerRoot)\Server.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Lidgren.Core"><HintPath>$(LmpServerRoot)\Lidgren.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="LunaConfigNode"><HintPath>$(LmpServerRoot)\LunaConfigNode.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,17 @@
+upstream/
+tools/
+**/bin/
+**/obj/
+artifacts/
+local.props
+test-work/
+
+.env
+.env.*
+*.pdb
+*.key
+*.pem
+Universe/
+Saves/
+migration-backup/
+*.log

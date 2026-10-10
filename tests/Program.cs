@@ -1,0 +1,78 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
+using CommNetLunaBridge;
+
+internal static class Program
+{
+    static int tests;
+    static string work;
+    static int Main(string[] args)
+    {
+        work = Path.Combine(Path.GetTempPath(), "CNC-LMP-tests-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(work);
+        try
+        {
+            Run("serializacao Unicode e dados completos", () => { var s = Seed(); s.Networks[1].Name = "Rede São Paulo 🚀"; Check(Wire.Same(s, Wire.Clone(s))); });
+            Run("criar rede e preservar identidade", () => { var e = Engine(); var op = Create(e, 42); Check(e.Apply(op, Editor()).Accepted); Check(e.State.Revision == 1 && e.State.Networks.Last().Id == op.Network.Id); });
+            Run("frequencia duplicada rejeitada", () => { var e = Engine(); Check(!e.Apply(Create(e, 22), Editor()).Accepted); Check(e.State.Revision == 0); });
+            foreach (int f in new[] { -1, 32768 }) Run("limite frequencia " + f, () => Check(!Engine().Apply(Create(Engine(), f), Editor()).Accepted));
+            Run("revisao antiga nao sobrescreve", () => { var e = Engine(); var a = Create(e, 23); var b = Create(e, 24); Check(e.Apply(a, Editor()).Accepted); Check(e.Apply(b, Editor()).Reason == "stale-revision"); Check(e.State.Networks.Any(n => n.Frequency == 23)); });
+            Run("deduplicacao apos reinicio", () => { string path = Path.Combine(work, "dedup", "state.json"); var store = new AtomicStore(path); var e = new Authority(Seed(), store.Save); var op = Create(e, 23); Check(e.Apply(op, Editor()).Accepted); var resumed = new Authority(store.Load(), store.Save); Check(resumed.Apply(op, Editor()).Duplicate && resumed.State.Revision == 1); });
+            Run("ID de operacao nao pode mudar payload", () => { var e = Engine(); var op = Create(e, 23); Check(e.Apply(op, Editor()).Accepted); op.Network.Name = "Outro"; Check(e.Apply(op, Editor()).Reason == "operation-id-reused"); });
+            Run("ID de operacao nao pode mudar jogador", () => { var e = Engine(); var op = Create(e, 23); Check(e.Apply(op, Editor()).Accepted); var a = Editor(); a.Player = "B"; Check(e.Apply(op, a).Reason == "operation-id-reused"); });
+            Run("nova epoca rejeita replay", () => { var e = Engine(); var op = Create(e, 23); op.Epoch = Guid.NewGuid().ToString(); Check(e.Apply(op, Editor()).Reason == "wrong-epoch"); });
+            Run("nao editor nao cria rede", () => { var e = Engine(); Check(e.Apply(Create(e, 23), new Access { Player = "B" }).Reason == "permission-denied"); });
+            Run("rede publica protegida de exclusao", () => { var e = Engine(); Check(e.Apply(Op(e, "delete", e.State.Networks[0].Id), Editor()).Reason == "public-protected"); });
+            Run("rede publica protegida de renumeracao", () => { var e = Engine(); var op = Op(e, "edit", e.State.Networks[0].Id); op.Network = Wire.Clone(e.State.Networks[0]); op.Network.Frequency = 2; Check(e.Apply(op, Editor()).Reason == "public-protected"); });
+            Run("editar nome/cor da publica permitido", () => { var e = Engine(); var op = Op(e, "edit", e.State.Networks[0].Id); op.Network = Wire.Clone(e.State.Networks[0]); op.Network.Name = "Pública"; op.Network.Color = new[] { 1f, 0f, .2f, 1f }; Check(e.Apply(op, Editor()).Accepted); });
+            Run("remap atomico catalogo estacao antena e lista travada", () => { var e = Engine(); var id = e.State.Networks[1].Id; var op = Op(e, "edit", id); op.Network = Wire.Clone(e.State.Networks[1]); op.Network.Frequency = 55; Check(e.Apply(op, Editor()).Accepted); Check(e.State.Networks[1].Id == id && e.State.Stations[0].Frequencies.Contains(55) && e.State.Vessels[0].Antennas[0].Frequency == 55 && e.State.Vessels[0].Frequencies.Contains(55)); });
+            Run("excluir reintegra referencias na publica sem duplicar", () => { var e = Engine(); Check(e.Apply(Op(e, "delete", e.State.Networks[1].Id), Editor()).Accepted); Check(e.State.Vessels[0].Frequencies.SequenceEqual(new[] { 0 }) && e.State.Vessels[0].Powers.SequenceEqual(new[] { 200d }) && e.State.Stations[0].Frequencies.SequenceEqual(new[] { 0 })); });
+            Run("identidade de rede imutavel", () => { var e = Engine(); var op = Op(e, "edit", e.State.Networks[1].Id); op.Network = Wire.Clone(e.State.Networks[1]); op.Network.Id = Guid.NewGuid().ToString(); Check(e.Apply(op, Editor()).Reason == "identity-changed"); });
+            Run("referencia desconhecida rejeitada", () => { var e = Engine(); var op = Op(e, "station"); op.Station = Wire.Clone(e.State.Stations[0]); op.Station.Frequencies.Add(33); Check(e.Apply(op, Editor()).Reason == "unknown-frequency"); });
+            Run("cor NaN rejeitada", () => { var e = Engine(); var op = Create(e, 23); op.Network.Color[0] = float.NaN; Check(!e.Apply(op, Editor()).Accepted); });
+            Run("texto que corromperia ConfigNode rejeitado", () => { var e = Engine(); var op = Create(e, 23); op.Network.Name = "x\nname = evil"; Check(e.Apply(op, Editor()).Reason == "invalid-text"); });
+            Run("antena exige lock", () => { var e = Engine(); var op = Op(e, "vessel"); op.Vessel = Wire.Clone(e.State.Vessels[0]); Check(e.Apply(op, new Access { Player = "B" }).Reason == "vessel-lock-required"); });
+            Run("antena exige parte conhecida", () => { var e = Engine(); var op = Op(e, "vessel"); op.Vessel = Wire.Clone(e.State.Vessels[0]); var a = Editor(); a.KnownAntenna = (_, __, ___) => false; Check(e.Apply(op, a).Reason == "unknown-antenna"); });
+            Run("edicao nao pode omitir partes da nave", () => { var e = Engine(); var op = Op(e, "vessel"); op.Vessel = Wire.Clone(e.State.Vessels[0]); op.Vessel.Antennas.Clear(); var a = Editor(); a.CompleteVessel = _ => false; Check(e.Apply(op, a).Reason == "vessel-topology-changed"); });
+            Run("antena nome frequencia uso lista manual", () => { var e = Engine(); var op = Op(e, "vessel"); op.Vessel = Wire.Clone(e.State.Vessels[0]); op.Vessel.Antennas[0].Frequency = 0; op.Vessel.Antennas[0].InUse = false; op.Vessel.Antennas[0].Name = "Antena 1"; Check(e.Apply(op, Editor()).Accepted); Check(!e.State.Vessels[0].Antennas[0].InUse); });
+            Run("potencia invalida rejeitada", () => { var e = Engine(); var op = Op(e, "vessel"); op.Vessel = Wire.Clone(e.State.Vessels[0]); op.Vessel.Powers[0] = double.PositiveInfinity; Check(!e.Apply(op, Editor()).Accepted); });
+            Run("estacao valida nome frequencias coordenadas", () => { var e = Engine(); var op = Op(e, "station"); op.Station = Wire.Clone(e.State.Stations[0]); op.Station.Name = "Nova"; op.Station.OverridePosition = true; op.Station.Body = "Mun"; op.Station.Latitude = 45; Check(e.Apply(op, Editor()).Accepted); });
+            Run("corpo celeste desconhecido rejeitado", () => { var e = Engine(); var op = Op(e, "station"); op.Station = Wire.Clone(e.State.Stations[0]); op.Station.OverridePosition = true; op.Station.Body = "Desconhecido"; Check(e.Apply(op, Editor()).Reason == "unknown-body"); });
+            Run("falha de persistencia nao publica estado", () => { var e = new Authority(Seed(), _ => throw new IOException("disk-full")); bool threw = false; try { e.Apply(Create(e, 23), Editor()); } catch (IOException) { threw = true; } Check(threw && e.State.Revision == 0); });
+            Run("recuperacao backup sem destruir copia boa", () => { var path = Path.Combine(work, "recovery", "state.json"); var store = new AtomicStore(path); store.Save(Seed()); var s = store.Load(); s.Revision = 7; store.Save(s); File.WriteAllText(path, "corrupt"); Check(store.Load().Revision == 0); Check(store.Load().Revision == 0 && File.Exists(path + ".recovery")); });
+            Run("schema desconhecido recusado", () => { var s = Seed(); s.Schema = 99; Throws(() => Authority.Validate(s)); });
+            Run("parser preserva valor contendo chaves e igualdade", () => { var tree = ConfigTree.Parse("blob = {\"x\":\"a=b\"}\nN\n{\nx = 1\n}\n"); Check(tree.Get("blob") == "{\"x\":\"a=b\"}" && ConfigTree.Parse(tree.ToString()).Node("N").Get("x") == "1"); });
+            Run("parser recusa arquivo truncado", () => Throws(() => ConfigTree.Parse("N\n{\nx = 1\n")));
+            Run("projecao scenario round-trip preserva compartilhado", () => { var s = Seed(); var projected = ImportExport.Import(ImportExport.Scenario(s), new Dictionary<string, string>(), 0); Check(projected.Networks.Count == 2 && Wire.Same(s.Stations, projected.Stations)); });
+            Run("topologia transfere configuracao pelo flightID", () => { var e = Engine(); var v = Wire.Clone(e.State.Vessels[0]); v.Id = Guid.NewGuid().ToString(); v.Antennas[0].Frequency = 0; Check(e.ReconcileTopology(v)); Check(e.State.Vessels.First(x => x.Id == v.Id).Antennas[0].Frequency == 22); });
+            Run("snapshot normal antigo nao altera configuracao aceita", () => { var e = Engine(); var v = Wire.Clone(e.State.Vessels[0]); v.Antennas[0].Frequency = 0; v.Antennas[0].InUse = false; Check(!e.ReconcileTopology(v)); Check(e.State.Vessels[0].Antennas[0].Frequency == 22 && e.State.Revision == 0); });
+            Run("parte nova com referencia inexistente entra na publica", () => { var e = Engine(); var v = Wire.Clone(e.State.Vessels[0]); v.Antennas.Add(new AntennaEntry { Part = 456, Index = 0, Frequency = 500, InUse = true }); Check(e.ReconcileTopology(v)); Check(e.State.Vessels[0].Antennas.Last().Frequency == 0); });
+            Run("sistema normal nao envia novos modos fora da revisao", () => { var e = Engine(); var v = Wire.Clone(e.State.Vessels[0]); v.Mode = "AutoBuild"; v.Frequencies.Clear(); v.Powers.Clear(); Check(!e.ReconcileTopology(v)); });
+            Run("dois consumidores convergem apos conflito e resync", () => { var e = Engine(); var clientA = Wire.Clone(e.State); var clientB = Wire.Clone(e.State); var op = Create(e, 23); Check(e.Apply(op, Editor()).Accepted); clientA = Wire.Clone(e.State); var stale = new Operation { Kind = "create", Epoch = clientB.Epoch, BaseRevision = clientB.Revision, Network = NewNetwork(24) }; Check(e.Apply(stale, Editor()).Reason == "stale-revision"); clientB = Wire.Clone(e.State); Check(Wire.Same(clientA, clientB)); });
+            Run("payload vazio/oversize recusado", () => { Throws(() => Wire.Decode<Packet>(new byte[0], 0)); Throws(() => Wire.Decode<Packet>(new byte[Wire.MaxBytes + 1], Wire.MaxBytes + 1)); });
+            Run("CNC overlay preserva orbita e campos terceiros", () => { var root = ConfigTree.Parse(VesselText()); var v = ImportExport.ReadVessel(root, Seed().Vessels[0].Id); v.Antennas[0].Frequency = 22; v.Antennas[0].InUse = false; ImportExport.OverlayVessel(root, v); Check(root.Node("ORBIT").Get("SMA") == "700000" && root.Node("PART").Nodes.First(n => n.Get("name") == "ThirdParty").Get("foo") == "keep" && ImportExport.ReadVessel(root, v.Id).Antennas[0].Frequency == 22); });
+            Run("lista AutoBuild nao congela potencia dinamica", () => { var root = ConfigTree.Parse(VesselText()); var v = ImportExport.ReadVessel(root, Seed().Vessels[0].Id); v.Mode = "AutoBuild"; v.Frequencies.Clear(); v.Powers.Clear(); ImportExport.OverlayVessel(root, v); Check(root.Node("CNCCommNetVessel").Nodes[0].Node("FreqDictionaryValues").Get("Item") == "200"); });
+            Run("uid e VESSELMODULES usados pelo KSP real", () => { var text = VesselText().Replace("flightID = 123", "uid = 123"); int split = text.IndexOf("CNCCommNetVessel\n"); text = text.Substring(0, split) + "VESSELMODULES\n{\n" + text.Substring(split) + "}\n"; var root = ConfigTree.Parse(text); var v = ImportExport.ReadVessel(root, Seed().Vessels[0].Id); Check(v.Mode == "LockList" && v.Frequencies.SequenceEqual(new[] { 0 }) && v.Antennas[0].Part == 123); v.Frequencies[0] = 22; ImportExport.OverlayVessel(root, v); Check(ImportExport.ReadVessel(root, v.Id).Frequencies.SequenceEqual(new[] { 22 })); });
+            if (args.Length > 0) Run("migracao dos arquivos reais em leitura", () => { string universe = args[0]; var files = Directory.GetFiles(Path.Combine(universe, "Vessels"), "*.txt").Where(f => Guid.TryParse(Path.GetFileNameWithoutExtension(f), out _)).ToDictionary(f => Path.GetFileNameWithoutExtension(f), File.ReadAllText); var state = ImportExport.Import(File.ReadAllText(Path.Combine(universe, "Scenarios", "CNCCommNetScenario.txt")), files, 0); Check(state.Networks.Count > 0 && state.Stations.Count > 0); Console.WriteLine("  dados reais: " + state.Networks.Count + " redes, " + state.Stations.Count + " estacoes, " + state.Vessels.Count + " naves CNC"); });
+            Console.WriteLine("PASS: " + tests + " testes. Diretorio temporario: " + work); return 0;
+        }
+        catch (Exception e) { Console.Error.WriteLine("FAIL: " + e); return 1; }
+    }
+    static void Run(string name, Action action) { action(); tests++; Console.WriteLine("PASS " + name); }
+    static void Check(bool condition) { if (!condition) throw new Exception("assertion-failed"); }
+    static void Throws(Action a) { bool thrown = false; try { a(); } catch { thrown = true; } Check(thrown); }
+    static Authority Engine() { return new Authority(Seed(), _ => { }); }
+    static Access Editor() { return new Access { Player = "A", EditGlobal = true, OwnVessel = _ => true, KnownAntenna = (_, __, ___) => true, KnownBody = b => b == "Kerbin" || b == "Mun" }; }
+    static Operation Op(Authority e, string kind, string target = null) { return new Operation { Kind = kind, Target = target, Epoch = e.State.Epoch, BaseRevision = e.State.Revision }; }
+    static Operation Create(Authority e, int f) { var o = Op(e, "create"); o.Network = NewNetwork(f); return o; }
+    static NetworkEntry NewNetwork(int f) { return new NetworkEntry { Id = Guid.NewGuid().ToString("D"), Frequency = f, Name = "Rede " + f, Color = new[] { .1f, .2f, .3f, 1f } }; }
+    static NetworkState Seed()
+    {
+        return new NetworkState { Networks = new List<NetworkEntry> { NewNetwork(0), NewNetwork(22) }, Stations = new List<StationEntry> { new StationEntry { Id = "TestStation", Name = "", Color = new[] { 1f, 0f, 0f, 1f }, TechLevel = 1, Body = "Kerbin", Frequencies = new List<int> { 0, 22 } } }, Vessels = new List<VesselEntry> { new VesselEntry { Id = "12345678-1234-1234-1234-123456789012", Mode = "LockList", Frequencies = new List<int> { 0, 22 }, Powers = new List<double> { 100, 200 }, Antennas = new List<AntennaEntry> { new AntennaEntry { Part = 123, Index = 0, Frequency = 22, InUse = true } } } } };
+    }
+    static string VesselText()
+    {
+        return "pid = 12345678123412341234123456789012\nORBIT\n{\nSMA = 700000\n}\nPART\n{\nflightID = 123\nMODULE\n{\nname = CNConstellationAntennaModule\nFrequency = 0\nInUse = True\nOptionalName = Main\n}\nMODULE\n{\nname = ThirdParty\nfoo = keep\n}\n}\nCNCCommNetVessel\n{\nCommNetConstellation.CommNetLayer.CNCCommNetVessel\n{\nFreqListOperation = LockList\nFreqDictionaryKeys\n{\nItem = 0\n}\nFreqDictionaryValues\n{\nItem = 200\n}\n}\n}\n";
+    }
+}

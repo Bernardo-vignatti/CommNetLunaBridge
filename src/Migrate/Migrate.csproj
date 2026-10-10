@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net6.0</TargetFramework><OutputType>Exe</OutputType><AssemblyName>CommNetLunaBridge.Migrate</AssemblyName></PropertyGroup>
+  <ItemGroup><Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" /></ItemGroup>
+</Project>

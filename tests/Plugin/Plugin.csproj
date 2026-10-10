@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net6.0</TargetFramework><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Server\Server.csproj" />
+    <Reference Include="Server"><HintPath>$(LmpServerRoot)\Server.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Lidgren.Core"><HintPath>$(LmpServerRoot)\Lidgren.Core.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="LunaConfigNode"><HintPath>$(LmpServerRoot)\LunaConfigNode.dll</HintPath><Private>true</Private></Reference>
+    <Content Include="$(LmpServerRoot)\*.dll" Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
