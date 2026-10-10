@@ -1,6 +1,6 @@
 # Relatório — 10/10/2026
 
-Foi implementado um bridge experimental de cliente e plugin de servidor. Este repositório contém uma exportação revisada para distribuição, com histórico novo e dados pessoais removidos. A instalação e o universo usados no desenvolvimento não foram modificados.
+Foi implementado um bridge experimental de cliente e plugin de servidor. Este repositório contém uma exportação revisada para distribuição, com histórico inicial novo e dados pessoais removidos. O universo usado no desenvolvimento permanece privado.
 
 ## Diagnóstico e evidência
 
@@ -24,11 +24,15 @@ Cliente aplica dados em `Update`, mantém identidade das redes, atualiza arrays 
 | Testes de núcleo/migração | 43 passaram | Serialização, validação, identidade, remaps, dedup, revisão, backup, topologia e leitura do universo real |
 | Integração do plugin | 13 passaram | Fábricas, filas, hooks, locks e store reais do Luna; clientes sintéticos |
 | ABI cliente | 36 vínculos conferidos | Métodos/campos/nomes de parâmetros das DLLs instaladas; sem executar Unity |
+| JSON cliente/servidor 0.1.1 | 14 verificações passaram | Handshake, Unicode, números, dados aninhados e rejeição de entrada inválida; compatibilidade com o serializador do servidor |
+| JSON no Mono instalado com KSP | 12 verificações passaram | Runtime real do KSP em processo separado, sem iniciar Unity ou uma sessão de jogo |
 | Dois clientes KSP / física / UI / cenas | Não executado | Não há compatibilidade multiplayer comprovada |
 
 Os logs brutos da máquina não são distribuídos. O CI público executa 42 testes sintéticos; o teste adicional local de leitura do universo explica o total de 43 acima. A reprodução dos testes do plugin exige um universo adequado de teste e as DLLs Luna indicadas; eles incluem a frequência sintética 22 e pelo menos uma nave CNC com antena. A exportação pública foi recompilada e os 43 testes de núcleo, 13 verificações do plugin e 36 vínculos ABI foram conferidos novamente antes da publicação. Os testes de plugin não enviam comandos ao servidor de uso e não representam autenticação/transportes de uma sessão KSP. A migração mantém backups com hashes SHA-256.
 
 ## Pendências e limites
+
+A primeira tentativa no KSP mostrou que a 0.1.0 carregava, mas falhava ao enviar o handshake por ausência de `System.Runtime.Serialization` no perfil Mono do jogo. O servidor encerrava a conexão ao expirar o prazo. A 0.1.1 usa o JsonFx já instalado pelo Luna no cliente, mantendo o serializador e o formato persistido do servidor. Os testes acima verificam a correção no runtime; a conexão e as mudanças de cena ainda precisam ser confirmadas após reiniciar o jogo com a atualização. Os logs privados não integram o repositório.
 
 Executar todos os casos de [TESTE-MULTIPLAYER.md](TESTE-MULTIPLAYER.md) em cópias isoladas. Especialmente: bloqueio físico de comunicação por frequência, UI aberta, naves não carregadas, atrasos entre canais do Luna, reconstrução durante docking, geometria de estações, reconexões repetidas e reinstanciação correta da rede. Upgrades de estações em carreira ficam bloqueados nesta versão. Criação/exclusão de estações, coleta de metadados de naves removidas e persistência adicional de preferências locais não foram implementadas. Os demais limites estão no README.
 

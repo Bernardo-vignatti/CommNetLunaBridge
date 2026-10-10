@@ -201,7 +201,11 @@ namespace CommNetLunaBridge
         public NetworkState Load()
         {
             try { return Read(Path); }
-            catch (Exception e) when (e is IOException || e is System.Runtime.Serialization.SerializationException || e is InvalidDataException)
+            catch (Exception e) when (e is IOException || e is InvalidDataException
+#if !CLIENT_JSON
+                || e is System.Runtime.Serialization.SerializationException
+#endif
+            )
             {
                 // Never overwrite the valid recovery copy with the corrupt primary.
                 var state = Read(Path + ".bak");

@@ -5,6 +5,7 @@
 | KSP | 1.12.5.3190 local | Referências de cliente; proprietário, não incluído |
 | CommNet Constellation | Arquivo 1.5.7 / assembly 1.5.0.0 | API cliente; GPL-3.0, não incluído como mod |
 | Luna | Cliente e servidor 0.29.2.0 locais | Transporte, plugin, locks e cenários; MIT |
+| JsonFx | DLL que acompanha Luna 0.29.2 | JSON do cliente; não incluída no pacote, usa a instalação existente do Luna |
 | Harmony | 2.2.1.0 já instalado | Patches cliente; MIT, não incluído |
 | LunaConfigNode | 1.9.1.0 já presente no servidor | Projeção de cenário; não incluído |
 | Microsoft.NETFramework.ReferenceAssemblies | NuGet 1.0.3 | Somente build; assemblies de referência Microsoft |

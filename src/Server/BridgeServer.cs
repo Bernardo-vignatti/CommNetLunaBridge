@@ -68,7 +68,7 @@ namespace CommNetLunaBridge
                 foreach (var pair in deadlines.Where(p => p.Value < clock.ElapsedMilliseconds).ToArray())
                 {
                     deadlines.Remove(pair.Key);
-                    MessageQueuer.SendConnectionEnd(pair.Key, "CNC-LMP: patch 0.1.0 obrigatorio (ou servidor sem migracao). Consulte o README.");
+                    MessageQueuer.SendConnectionEnd(pair.Key, "CNC-LMP: patch " + Wire.Version + " obrigatorio (ou servidor sem migracao). Consulte o README.");
                 }
             }
         }
@@ -139,7 +139,7 @@ namespace CommNetLunaBridge
             if (packet.Kind == "hello")
             {
                 if (packet.ClientVersion != Wire.Version || packet.LmpVersion != "0.29.2.0" || packet.CncVersion != "1.5.7")
-                { MessageQueuer.SendConnectionEnd(client, "CNC-LMP: versoes suportadas: bridge 0.1.0, Luna 0.29.2, Constellation 1.5.7."); return; }
+                { MessageQueuer.SendConnectionEnd(client, "CNC-LMP: versoes suportadas: bridge 0.1.1, Luna 0.29.2, Constellation 1.5.7."); return; }
                 ready.Add(client); deadlines.Remove(client);
                 Log("player=" + client.PlayerName + " status=initialized revision=" + authority.State.Revision);
                 Send(client, Snapshot("snapshot", ""));

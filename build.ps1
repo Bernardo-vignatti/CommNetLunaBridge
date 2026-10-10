@@ -23,5 +23,13 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Build do verificador ABI falhou.' }
         & .\tests\Abi\bin\Release\net472\CommNetLunaBridge.AbiCheck.exe $KspRoot
         if ($LASTEXITCODE -ne 0) { throw 'Verificacao ABI falhou.' }
+        & $compiler build tests\ClientCodec\ClientCodec.csproj -c Release --nologo "-p:KspRoot=$KspRoot"
+        if ($LASTEXITCODE -ne 0) { throw 'Build dos testes JSON falhou.' }
+        & .\tests\ClientCodec\bin\Release\net472\ClientCodec.exe
+        if ($LASTEXITCODE -ne 0) { throw 'Compatibilidade JSON cliente/servidor falhou.' }
+        & $compiler build tests\MonoHost\MonoHost.csproj -c Release --nologo
+        if ($LASTEXITCODE -ne 0) { throw 'Build do teste Mono falhou.' }
+        & .\tests\MonoHost\bin\Release\net472\MonoHost.exe $KspRoot (Join-Path $PSScriptRoot 'tests\ClientCodec\bin\Release\net472\ClientCodec.exe')
+        if ($LASTEXITCODE -ne 0) { throw 'Serializacao no Mono do KSP falhou.' }
     }
 } finally { Pop-Location }

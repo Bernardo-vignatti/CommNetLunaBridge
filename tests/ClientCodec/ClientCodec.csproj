@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net472</TargetFramework><OutputType>Exe</OutputType><DefineConstants>$(DefineConstants);CLIENT_JSON</DefineConstants></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Compile Include="..\..\src\Shared\Protocol.cs" Link="Protocol.cs" />
+    <Reference Include="JsonFx"><HintPath>$(KspRoot)\GameData\LunaMultiplayer\Plugins\JsonFx.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+</Project>
