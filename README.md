@@ -1,12 +1,12 @@
-# CommNet Luna Bridge 0.1.1 — experimental
+# CommNet Luna Bridge 0.1.2 — experimental
 
 Complemento para sincronizar CommNet Constellation durante sessões Luna Multiplayer. Implementação preparada para **KSP 1.12.5.3190, Constellation 1.5.7, Luna cliente/servidor 0.29.2 e Harmony 2.2.1**. O assembly do Constellation se identifica como 1.5.0.0; a versão de arquivo correta é 1.5.7.
 
 **As DLLs compilam e os testes automatizados passaram, incluindo serialização no Mono do KSP. Ainda não houve validação dentro de dois clientes KSP.** Preserve backups do servidor/universo e dos mods antes de testar. Não é necessário duplicar toda a instalação do KSP.
 
-### Atualizar da 0.1.0
+### Atualizar da 0.1.0 ou 0.1.1
 
-Com o KSP e o servidor encerrados, substitua as duas DLLs do bridge pelos arquivos 0.1.1 do pacote. Cliente e servidor precisam da mesma versão. Preserve `Universe/CommNetLunaBridge`; a atualização não exige nova migração. A 0.1.1 corrige uma dependência ausente no KSP que impedia o handshake e causava desconexão após 30 segundos, inclusive ao entrar na Tracking Station.
+Com o KSP e o servidor encerrados, substitua as duas DLLs do bridge pelos arquivos 0.1.2 do pacote. Cliente e servidor precisam da mesma versão. Preserve `Universe/CommNetLunaBridge`; a atualização não exige nova migração. A 0.1.1 corrigiu uma dependência ausente no KSP que impedia o handshake e causava desconexão após 30 segundos, inclusive ao entrar na Tracking Station. A 0.1.2 remove JSON/hash das comparações periódicas, evita capturar repetidamente naves ainda sem estado oficial e só recalcula antenas quando há mudança aplicável.
 
 ## Comportamento implementado
 
@@ -69,10 +69,12 @@ Procure `[CNC-LMP]` em `KSP.log` e nos logs do servidor. Estados distintos: `req
 - `vessel-lock-required`: falta controle/update/unloaded-update, ou outro jogador tem controle.
 - `vessel-topology-changed`/`unknown-antenna`: as peças mudaram ou o servidor ainda não recebeu a nave; aguarde o snapshot normal e repita.
 - `application-failed`: confira versão dos mods, existência das estações e corpos celestes; a conexão é encerrada.
-- `System.Runtime.Serialization` ausente ou aviso de patch obrigatório com a 0.1.0: atualize cliente e servidor para 0.1.1 e reinicie ambos. O cliente usa o `JsonFx.dll` que já acompanha o Luna 0.29.2; não instale DLLs de sistema avulsas.
+- `System.Runtime.Serialization` ausente ou aviso de patch obrigatório com a 0.1.0: atualize cliente e servidor para 0.1.2 e reinicie ambos. O cliente usa o `JsonFx.dll` que já acompanha o Luna 0.29.2; não instale DLLs de sistema avulsas.
 - `disabled`: confira migração, `settings.json` e integridade do backup no servidor.
 
 Logs não registram senhas ou tokens. Nenhum handler de rede chama APIs Unity diretamente.
+
+A 0.1.2 registra `status=performance` a cada 15 segundos enquanto conectado. `updateAvgMs` e `updateMaxMs` medem o tempo gasto em `Update` do bridge, incluindo captura/aplicação de dados; não medem renderização nem o tempo total do frame. Esses valores ajudam a verificar se o bridge ainda está consumindo tempo excessivo durante a sessão.
 
 ## Limites desta versão
 
@@ -112,6 +114,6 @@ O CI verifica esse núcleo e o migrador usando apenas dados sintéticos. Cliente
 
 ## Download e contribuições
 
-Use a seção **Releases** deste repositório para baixar `CommNetLunaBridge-0.1.1-experimental.zip` e seu SHA-256. O ZIP contém cliente, plugin de servidor, migrador, documentação, licenças e fonte correspondente. A versão é uma pré-release experimental; consulte [CHANGELOG.md](CHANGELOG.md), [CONTRIBUTING.md](CONTRIBUTING.md) e [a revisão da distribuição](docs/DISTRIBUICAO.md).
+Use a seção **Releases** deste repositório para baixar `CommNetLunaBridge-0.1.2-experimental.zip` e seu SHA-256. O ZIP contém cliente, plugin de servidor, migrador, documentação, licenças e fonte correspondente. A versão é uma pré-release experimental; consulte [CHANGELOG.md](CHANGELOG.md), [CONTRIBUTING.md](CONTRIBUTING.md) e [a revisão da distribuição](docs/DISTRIBUICAO.md).
 
 Projeto independente, sem afiliação ou endosso dos autores de KSP, Constellation ou Luna Multiplayer. Os nomes desses projetos identificam as dependências e a compatibilidade pretendida.

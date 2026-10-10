@@ -19,12 +19,15 @@ static class MonoHost
         var domain = mono_jit_init_version("bridge-codec-test", "v4.0.30319");
         var assembly = mono_domain_assembly_open(domain, test);
         if (domain == IntPtr.Zero || assembly == IntPtr.Zero) throw new Exception("mono-test-unavailable");
-        var argv = Marshal.AllocHGlobal(IntPtr.Size * 2);
-        var first = Marshal.StringToHGlobalAnsi(test); var second = Marshal.StringToHGlobalAnsi("--mono");
-        Marshal.WriteIntPtr(argv, first); Marshal.WriteIntPtr(argv, IntPtr.Size, second);
-        int result = mono_jit_exec(domain, assembly, 2, argv);
+        var arguments = new System.Collections.Generic.List<string> { test, "--mono" };
+        for (int i = 2; i < args.Length; i++) arguments.Add(args[i]);
+        var strings = new IntPtr[arguments.Count];
+        var argv = Marshal.AllocHGlobal(IntPtr.Size * arguments.Count);
+        for (int i = 0; i < strings.Length; i++) { strings[i] = Marshal.StringToHGlobalAnsi(arguments[i]); Marshal.WriteIntPtr(argv, IntPtr.Size * i, strings[i]); }
+        int result = mono_jit_exec(domain, assembly, arguments.Count, argv);
         mono_jit_cleanup(domain);
-        Marshal.FreeHGlobal(first); Marshal.FreeHGlobal(second); Marshal.FreeHGlobal(argv);
+        foreach (var pointer in strings) Marshal.FreeHGlobal(pointer);
+        Marshal.FreeHGlobal(argv);
         return result;
     }
 }

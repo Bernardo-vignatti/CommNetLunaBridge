@@ -24,11 +24,14 @@ Cliente aplica dados em `Update`, mantém identidade das redes, atualiza arrays 
 | Testes de núcleo/migração | 43 passaram | Serialização, validação, identidade, remaps, dedup, revisão, backup, topologia e leitura do universo real |
 | Integração do plugin | 13 passaram | Fábricas, filas, hooks, locks e store reais do Luna; clientes sintéticos |
 | ABI cliente | 36 vínculos conferidos | Métodos/campos/nomes de parâmetros das DLLs instaladas; sem executar Unity |
-| JSON cliente/servidor 0.1.1 | 14 verificações passaram | Handshake, Unicode, números, dados aninhados e rejeição de entrada inválida; compatibilidade com o serializador do servidor |
-| JSON no Mono instalado com KSP | 12 verificações passaram | Runtime real do KSP em processo separado, sem iniciar Unity ou uma sessão de jogo |
+| JSON cliente/servidor 0.1.2 | 18 verificações passaram | Handshake, Unicode, números, dados aninhados e rejeição de entrada inválida; compatibilidade com o serializador do servidor |
+| JSON no Mono instalado com KSP | 16 verificações passaram | Runtime real do KSP em processo separado, sem iniciar Unity ou uma sessão de jogo |
 | Dois clientes KSP / física / UI / cenas | Não executado | Não há compatibilidade multiplayer comprovada |
 
 Os logs brutos da máquina não são distribuídos. O CI público executa 42 testes sintéticos; o teste adicional local de leitura do universo explica o total de 43 acima. A reprodução dos testes do plugin exige um universo adequado de teste e as DLLs Luna indicadas; eles incluem a frequência sintética 22 e pelo menos uma nave CNC com antena. A exportação pública foi recompilada e os 43 testes de núcleo, 13 verificações do plugin e 36 vínculos ABI foram conferidos novamente antes da publicação. Os testes de plugin não enviam comandos ao servidor de uso e não representam autenticação/transportes de uma sessão KSP. A migração mantém backups com hashes SHA-256.
+
+
+A 0.1.2 corrige custo de polling: comparações de catálogo/estações/naves passam a comparar valores diretamente. Naves ainda sem registro oficial recebem baseline uma vez, naves inalteradas não são capturadas duas vezes, e a aplicação só chama OnAntennaChange quando há mudança de dados aplicáveis ou força explícita de estado/cena. Em benchmark sintético no Mono instalado com KSP (30 registros de nave, 9 estações, 2 redes), a comparação antiga custou 70,762 ms por ciclo e a direta 0,003 ms. O benchmark inclui somente comparação, não captura de objetos Unity, renderização ou FPS. Para reproduzir: execute MonoHost com os argumentos de caminho usados em build.ps1, acrescentando --benchmark. A melhora dentro de uma sessão KSP ainda precisa ser medida.
 
 ## Pendências e limites
 

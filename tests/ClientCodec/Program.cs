@@ -38,15 +38,32 @@ static class Program
             Check(Wire.Same(original, fromClient));
         }
     }
+    static void Benchmark()
+    {
+        var state = Sample().State; var copy = Wire.Clone(state);
+        Action oldPass = () => { for (int i = 0; i < 30; i++) Wire.Same(state.Vessels[0], copy.Vessels[0]); for (int i = 0; i < 9; i++) Wire.Same(state.Stations[0], copy.Stations[0]); for (int i = 0; i < 2; i++) Wire.Same(state.Networks[0], copy.Networks[0]); };
+        Action newPass = () => { for (int i = 0; i < 30; i++) StateComparison.Same(state.Vessels[0], copy.Vessels[0]); for (int i = 0; i < 9; i++) StateComparison.Same(state.Stations[0], copy.Stations[0]); for (int i = 0; i < 2; i++) StateComparison.Same(state.Networks[0], copy.Networks[0]); };
+        oldPass(); newPass();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        for (int i = 0; i < 5; i++) oldPass();
+        double oldMs = watch.Elapsed.TotalMilliseconds / 5;
+        watch.Restart(); for (int i = 0; i < 1000; i++) newPass();
+        Console.WriteLine("BENCH comparison-only synthetic 30 vessels / 9 stations / 2 networks: old=" + oldMs.ToString("F3", CultureInfo.InvariantCulture) + " ms/pass; direct=" + (watch.Elapsed.TotalMilliseconds / 1000).ToString("F3", CultureInfo.InvariantCulture) + " ms/pass; not a game FPS measurement");
+    }
     static int Main(string[] args)
     {
         try
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("pt-BR");
             var hello = Wire.Clone(new Packet { Kind = "hello", ClientVersion = Wire.Version });
-            Check(hello.Kind == "hello" && hello.ClientVersion == "0.1.1" && hello.State == null && hello.Operation == null);
+            Check(hello.Kind == "hello" && hello.ClientVersion == "0.1.2" && hello.State == null && hello.Operation == null);
             var original = Sample(); var copy = Wire.Clone(original);
             Check(Wire.Same(original, copy));
+            Check(StateComparison.Same(original.State.Networks[0], copy.State.Networks[0]) && StateComparison.Same(original.State.Stations[0], copy.State.Stations[0]) && StateComparison.Same(original.State.Vessels[0], copy.State.Vessels[0]));
+            copy.State.Networks[0].Color[0] = 0.9f; Check(!StateComparison.Same(original.State.Networks[0], copy.State.Networks[0]));
+            copy.State.Stations[0].Longitude += 1; Check(!StateComparison.Same(original.State.Stations[0], copy.State.Stations[0]));
+            copy.State.Vessels[0].Antennas[0].InUse = false; Check(!StateComparison.Same(original.State.Vessels[0], copy.State.Vessels[0]));
+            copy = Wire.Clone(original);
             Check(copy.State.Networks[0].Name == original.State.Networks[0].Name);
             Check(copy.State.Vessels[0].Antennas[0].Part == uint.MaxValue);
             Check(copy.State.Revision == 1234567890123L);
@@ -58,6 +75,7 @@ static class Program
             Reject(() => Wire.Decode<Packet>(new byte[] { 0xff }, 1));
             Check(Read<Packet>("{\"Kind\":\"[{\\\"}]\"}").Kind == "[{\"}]");
             if (!args.Contains("--mono")) Compatibility();
+            if (args.Contains("--benchmark")) Benchmark();
             Console.WriteLine("PASS client JSON: " + checks + " checks"); return 0;
         }
         catch (Exception e) { Console.Error.WriteLine(e); return 1; }

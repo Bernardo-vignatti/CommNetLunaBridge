@@ -43,6 +43,8 @@ namespace CommNetLunaBridge
         private Packet pending;
         private long nextPoll, nextHello, pendingSent;
         private long firstHello;
+        private long timingStart, timingTicks, timingMax;
+        private int timingSamples;
         private bool missingServerNotified;
         private bool globalEditor, wasActive, broken, subscribed;
         private EventData<string, byte[]> modEvent;
@@ -66,6 +68,7 @@ namespace CommNetLunaBridge
         }
         public void Update()
         {
+            long started = clock.ElapsedTicks;
             try
             {
                 if (!subscribed)
@@ -131,11 +134,28 @@ namespace CommNetLunaBridge
                 Notify("CNC-LMP: falha ao aplicar estado; edicao bloqueada. Consulte KSP.log.");
                 MainSystem.NetworkState = ClientState.DisconnectRequested;
             }
+            finally
+            {
+                if (wasActive)
+                {
+                    if (timingSamples == 0) timingStart = started;
+                    long elapsed = clock.ElapsedTicks - started;
+                    timingTicks += elapsed; timingMax = Math.Max(timingMax, elapsed); timingSamples++;
+                    if (clock.ElapsedTicks - timingStart >= Stopwatch.Frequency * 15L)
+                    {
+                        double milliseconds = 1000d / Stopwatch.Frequency;
+                        Log(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                            "status=performance samples={0} updateAvgMs={1:F3} updateMaxMs={2:F3}", timingSamples, timingTicks * milliseconds / timingSamples, timingMax * milliseconds));
+                        timingSamples = 0; timingTicks = 0; timingMax = 0;
+                    }
+                }
+            }
         }
         private static void Ignore(List<string> list, HashSet<string> added, string name) { if (!list.Contains(name)) { list.Add(name); added.Add(name); } }
         private void ResetSession()
         {
             official = null; pending = null; lastScenario = null; identities.Clear(); observed.Clear(); vesselEdits.Clear(); editRevisions.Clear(); dialogs.Clear(); nativeStations.Clear(); globalEditor = false; nextHello = 0; firstHello = 0; missingServerNotified = false;
+            timingSamples = 0; timingTicks = 0; timingMax = 0;
             while (incoming.TryDequeue(out _)) { }
             foreach (var name in addedSendIgnores) IgnoredScenarios.IgnoreSend.Remove(name);
             foreach (var name in addedReceiveIgnores) IgnoredScenarios.IgnoreReceive.Remove(name);
@@ -195,7 +215,7 @@ namespace CommNetLunaBridge
                 string id; identities.TryGetValue(entry, out id);
                 var current = new NetworkEntry { Id = id ?? Guid.NewGuid().ToString("D"), Frequency = entry.frequency, Name = entry.name, Color = Components(entry.color) };
                 var before = official.Networks.FirstOrDefault(n => n.Id == id);
-                if (before == null || !Wire.Same(current, before))
+                if (before == null || !StateComparison.Same(current, before))
                 {
                     if (!globalEditor) { ApplyState(true); Notify("CNC-LMP: apenas editores do servidor podem alterar redes/estacoes."); return null; }
                     return new Operation { Kind = before == null ? "create" : "edit", Target = id, Network = current };
@@ -209,7 +229,7 @@ namespace CommNetLunaBridge
                 var current = CaptureStation(station); var before = official.Stations.FirstOrDefault(s => s.Id == current.Id);
                 // KSC tech level comes from the shared facilities system; CNC cannot override it.
                 if (before != null && station.isKSC) current.TechLevel = before.TechLevel;
-                if (before != null && !Wire.Same(current, before)) return new Operation { Kind = "station", Station = current };
+                if (before != null && !StateComparison.Same(current, before)) return new Operation { Kind = "station", Station = current };
             }
             foreach (var vessel in FlightGlobals.Vessels)
             {
@@ -217,7 +237,7 @@ namespace CommNetLunaBridge
                 if (!(vessel.connection is CNCCommNetVessel connection)) continue;
                 var current = CaptureVessel(vessel, connection);
                 if (!observed.TryGetValue(current.Id, out var previous)) { observed[current.Id] = current; continue; }
-                if (!Wire.Same(current, previous))
+                if (!StateComparison.Same(current, previous))
                 {
                     if (!Owns(vessel.id)) { ApplyVessel(vessel, previous); Notify("CNC-LMP: adquira o controle/lock da nave antes de editar antenas."); return null; }
                     return new Operation { Kind = "vessel", Vessel = current };
@@ -274,11 +294,21 @@ namespace CommNetLunaBridge
                 {
                     if (!force && vesselEdits.Contains(vessel.id)) continue;
                     if (!(vessel.connection is CNCCommNetVessel connection)) continue;
-                    var entry = official.Vessels.FirstOrDefault(v => v.Id == vessel.id.ToString("D"));
-                    if (entry == null) { observed[vessel.id.ToString("D")] = CaptureVessel(vessel, connection); continue; }
+                    string id = vessel.id.ToString("D");
+                    var entry = official.Vessels.FirstOrDefault(v => v.Id == id);
+                    if (entry == null)
+                    {
+                        // Establish a baseline once while awaiting the normal Luna snapshot.
+                        if (force || !observed.ContainsKey(id)) observed[id] = CaptureVessel(vessel, connection);
+                        continue;
+                    }
                     var current = CaptureVessel(vessel, connection);
-                    if (force || !Wire.Same(current, entry)) ApplyVessel(vessel, entry);
-                    observed[entry.Id] = CaptureVessel(vessel, connection);
+                    if (force || !StateComparison.Same(current, entry))
+                    {
+                        ApplyVessel(vessel, entry, force);
+                        current = CaptureVessel(vessel, connection);
+                    }
+                    observed[entry.Id] = current;
                 }
             }
             finally { Applying = previousApplying; }
@@ -290,7 +320,7 @@ namespace CommNetLunaBridge
         private void ApplyStation(CNCCommNetHome station, StationEntry entry)
         {
             var before = CaptureStation(station); if (station.isKSC) before.TechLevel = entry.TechLevel;
-            if (Wire.Same(before, entry)) return;
+            if (StateComparison.Same(before, entry)) return;
             station.Color = Color(entry.Color); station.stationName = entry.Name; station.TechLevel = (short)entry.TechLevel;
             station.OverrideLatLongAlt = entry.OverridePosition; station.CustomLatitude = entry.Latitude; station.CustomLongitude = entry.Longitude; station.CustomAltitude = entry.Altitude; station.CustomCelestialBody = entry.Body;
             station.replaceFrequencies(entry.Frequencies.Select(f => (short)f).ToList());
@@ -332,32 +362,51 @@ namespace CommNetLunaBridge
             if (entry.Mode == "LockList") foreach (var f in connection.getFrequencyList().OrderBy(f => f)) { entry.Frequencies.Add(f); entry.Powers.Add(connection.getMaxComPower(f)); }
             return entry;
         }
-        private static void ApplyVessel(Vessel vessel, VesselEntry entry)
+        private static void ApplyVessel(Vessel vessel, VesselEntry entry, bool force = false)
         {
             if (!(vessel.connection is CNCCommNetVessel connection)) return;
+            bool changed = false;
             foreach (var a in entry.Antennas)
             {
                 if (vessel.loaded)
                 {
                     var part = vessel.parts.FirstOrDefault(p => p.flightID == a.Part);
                     var module = part?.Modules.OfType<CNConstellationAntennaModule>().Skip(a.Index).FirstOrDefault();
-                    if (module != null) { module.Frequency = (short)a.Frequency; module.InUse = a.InUse; AccessTools.Field(typeof(CNConstellationAntennaModule), "OptionalName").SetValue(module, a.Name); }
+                    if (module != null)
+                    {
+                        var name = AccessTools.Field(typeof(CNConstellationAntennaModule), "OptionalName");
+                        if (module.Frequency != a.Frequency || module.InUse != a.InUse || (string)name.GetValue(module) != a.Name)
+                        { module.Frequency = (short)a.Frequency; module.InUse = a.InUse; name.SetValue(module, a.Name); changed = true; }
+                    }
                 }
                 if (vessel.protoVessel != null)
                 {
                     var part = vessel.protoVessel.protoPartSnapshots.FirstOrDefault(p => p.flightID == a.Part);
                     var module = part?.modules.Where(m => m.moduleName == "CNConstellationAntennaModule").Skip(a.Index).FirstOrDefault();
-                    if (module != null) { module.moduleValues.SetValue("Frequency", a.Frequency, true); module.moduleValues.SetValue("InUse", a.InUse, true); module.moduleValues.SetValue("OptionalName", a.Name, true); }
+                    if (module != null)
+                    {
+                        var values = module.moduleValues;
+                        if (ConfigTree.Int(values.GetValue("Frequency") ?? "0") != a.Frequency || bool.Parse(values.GetValue("InUse") ?? "True") != a.InUse || (values.GetValue("OptionalName") ?? "") != (a.Name ?? ""))
+                        { values.SetValue("Frequency", a.Frequency, true); values.SetValue("InUse", a.InUse, true); values.SetValue("OptionalName", a.Name, true); changed = true; }
+                    }
                 }
             }
-            connection.FreqListOperation = (CNCCommNetVessel.FrequencyListOperation)Enum.Parse(typeof(CNCCommNetVessel.FrequencyListOperation), entry.Mode);
+            var mode = (CNCCommNetVessel.FrequencyListOperation)Enum.Parse(typeof(CNCCommNetVessel.FrequencyListOperation), entry.Mode);
+            if (connection.FreqListOperation != mode) { connection.FreqListOperation = mode; changed = true; }
             if (entry.Mode == "LockList")
             {
-                AccessTools.Field(typeof(CNCCommNetVessel), "FreqDictionaryKeys").SetValue(connection, entry.Frequencies.Select(f => (short)f).ToList());
-                AccessTools.Field(typeof(CNCCommNetVessel), "FreqDictionaryValues").SetValue(connection, entry.Powers.ToList());
-                connection.PersistenceLoad();
+                var keys = AccessTools.Field(typeof(CNCCommNetVessel), "FreqDictionaryKeys");
+                var powers = AccessTools.Field(typeof(CNCCommNetVessel), "FreqDictionaryValues");
+                if (force || changed || !((List<short>)keys.GetValue(connection)).Select(f => (int)f).SequenceEqual(entry.Frequencies) || !((List<double>)powers.GetValue(connection)).SequenceEqual(entry.Powers))
+                {
+                    keys.SetValue(connection, entry.Frequencies.Select(f => (short)f).ToList());
+                    powers.SetValue(connection, entry.Powers.ToList());
+                    connection.PersistenceLoad(); changed = true;
+                }
             }
-            connection.OnAntennaChange();
+            // Extra/unregistered parts can differ from the snapshot without any applicable change.
+            // Rebuilding their radio data on every poll would never make that difference disappear.
+            if (changed || force) connection.OnAntennaChange();
         }
         public static bool Owns(Guid vessel)
         {

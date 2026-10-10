@@ -1,5 +1,14 @@
 # Histórico de versões
 
+## 0.1.2 experimental — 2026-10-10
+
+- Remove serialização JSON e SHA-256 das comparações periódicas do cliente; compara os campos diretamente.
+- Evita recapturar naves sem estado oficial a cada ciclo e capturar duas vezes naves sem alterações.
+- Recalcula antenas somente após mudanças aplicáveis ou atualização forçada de estado/cena; peças extras não causam reconstrução contínua.
+- Teste sintético no Mono do KSP: comparação de 30 registros de nave, 9 estações e 2 redes caiu de aproximadamente 71 ms para menos de 0,01 ms por ciclo. Isso não mede FPS ou trabalho de captura no jogo.
+- Mantém o formato do universo. Atualize ambas as DLLs, sem remigração.
+- Registra média e máximo do tempo de Update do bridge a cada 15 segundos conectado para diagnóstico de desempenho no jogo.
+
 ## 0.1.1 experimental — 2026-10-10
 
 - Corrige o handshake no KSP usando o JsonFx que acompanha o Luna, sem depender de System.Runtime.Serialization no cliente.

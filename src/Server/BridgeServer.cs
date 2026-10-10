@@ -139,7 +139,7 @@ namespace CommNetLunaBridge
             if (packet.Kind == "hello")
             {
                 if (packet.ClientVersion != Wire.Version || packet.LmpVersion != "0.29.2.0" || packet.CncVersion != "1.5.7")
-                { MessageQueuer.SendConnectionEnd(client, "CNC-LMP: versoes suportadas: bridge 0.1.1, Luna 0.29.2, Constellation 1.5.7."); return; }
+                { MessageQueuer.SendConnectionEnd(client, "CNC-LMP: versoes suportadas: bridge 0.1.2, Luna 0.29.2, Constellation 1.5.7."); return; }
                 ready.Add(client); deadlines.Remove(client);
                 Log("player=" + client.PlayerName + " status=initialized revision=" + authority.State.Revision);
                 Send(client, Snapshot("snapshot", ""));

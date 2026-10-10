@@ -92,7 +92,7 @@ namespace CommNetLunaBridge
     public static class Wire
     {
         public const string Channel = "CommNetLunaBridge/v1";
-        public const string Version = "0.1.1";
+        public const string Version = "0.1.2";
         public const int MaxBytes = 4 * 1024 * 1024;
         public static byte[] Encode<T>(T value)
         {
