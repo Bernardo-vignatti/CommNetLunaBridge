@@ -14,6 +14,9 @@ namespace CommNetLunaBridge
         public Func<string, uint, int, bool> KnownAntenna = (_, __, ___) => false;
         public Func<VesselEntry, bool> CompleteVessel = _ => true;
         public Func<string, bool> KnownBody = _ => false;
+        public Func<int, int> UpgradeCost = _ => 0;
+        public double? Funds;
+        public bool Career;
     }
     public sealed class Decision
     {
@@ -45,6 +48,7 @@ namespace CommNetLunaBridge
                 Require(operation.Epoch == State.Epoch, "wrong-epoch");
                 Require(operation.BaseRevision == State.Revision, "stale-revision");
                 var next = Wire.Clone(State);
+                next.Funding = null;
                 switch (operation.Kind)
                 {
                     case "create":
@@ -80,7 +84,23 @@ namespace CommNetLunaBridge
                         Require(!operation.Station.OverridePosition || access.KnownBody(operation.Station.Body), "unknown-body");
                         // KSC level is governed by KSP's facilities, not CNC's station editor.
                         Require(operation.Station.Id != "Kerbin: KSC" || operation.Station.TechLevel == next.Stations[station].TechLevel, "ksc-level-managed-by-ksp");
+                        Require(operation.Station.TechLevel == next.Stations[station].TechLevel, "upgrade-operation-required");
                         next.Stations[station] = Wire.Clone(operation.Station);
+                        break;
+                    case "upgrade":
+                        Require(access.EditGlobal, "permission-denied");
+                        var home = next.Stations.FirstOrDefault(s => s.Id == operation.Target);
+                        Require(home != null, "unknown-station");
+                        Require(home.Id != "Kerbin: KSC", "ksc-level-managed-by-ksp");
+                        Require(home.TechLevel < 3, "station-at-max-level");
+                        if (access.Career)
+                        {
+                            int cost = access.UpgradeCost(home.TechLevel);
+                            Require(cost >= 0 && access.Funds.HasValue && Finite(access.Funds.Value), "funding-unavailable");
+                            Require(access.Funds.Value >= cost, "insufficient-funds");
+                            next.Funding = new FundingDebit { OperationId = operation.Id, Before = access.Funds.Value, After = access.Funds.Value - cost };
+                        }
+                        home.TechLevel++;
                         break;
                     case "vessel":
                         Require(operation.Vessel != null && operation.Vessel.Antennas != null && access.OwnVessel(operation.Vessel.Id), "vessel-lock-required");
@@ -136,22 +156,41 @@ namespace CommNetLunaBridge
         // user edits and never grants an unpatched client permission to edit CNC.
         public bool ReconcileTopology(VesselEntry incoming)
         {
-            var entry = Topology.Reconcile(State, incoming);
-            var previous = State.Vessels.FirstOrDefault(v => v.Id == entry.Id);
-            if (previous != null && Wire.Same(entry, previous)) return false;
-            if (previous == null && entry.Antennas.Count == 0) return false;
+            return ReconcileTopologies(new[] { incoming });
+        }
+        public bool ReconcileTopologies(IEnumerable<VesselEntry> incoming)
+        {
             var next = Wire.Clone(State);
-            next.Vessels.RemoveAll(v => v.Id == entry.Id);
-            next.Vessels.Add(entry);
+            bool changed = false;
+            foreach (var vessel in incoming)
+            {
+                var entry = Topology.Reconcile(State, vessel);
+                var previous = State.Vessels.FirstOrDefault(v => v.Id == entry.Id);
+                if (previous != null && StateComparison.Same(entry, previous)) continue;
+                if (previous == null && entry.Antennas.Count == 0) continue;
+                next.Vessels.RemoveAll(v => v.Id == entry.Id);
+                next.Vessels.Add(entry); changed = true;
+            }
+            if (!changed) return false;
+            next.Funding = null;
             next.Revision = checked(next.Revision + 1);
             Normalize(next); Validate(next); persist(next); State = next;
             return true;
         }
         public static void Require(bool condition, string error) { if (!condition) throw new InvalidDataException(error); }
+        public bool PruneVessels(ISet<string> existing)
+        {
+            if (State.Vessels.All(v => existing.Contains(v.Id))) return false;
+            var next = Wire.Clone(State); next.Funding = null;
+            next.Vessels.RemoveAll(v => !existing.Contains(v.Id));
+            next.Revision = checked(next.Revision + 1);
+            Normalize(next); Validate(next); persist(next); State = next; return true;
+        }
         public static void Validate(NetworkState state)
         {
             Require(state != null && state.Schema == 1 && Guid.TryParse(state.Epoch, out _) && state.Revision >= 0, "unsupported-state-schema");
             Require(state.Networks != null && state.Stations != null && state.Vessels != null && state.Receipts != null, "missing-state-list");
+            if (state.Funding != null) Require(Guid.TryParse(state.Funding.OperationId, out _) && Finite(state.Funding.Before) && Finite(state.Funding.After) && state.Funding.After >= 0 && state.Funding.Before >= state.Funding.After && state.Receipts.Any(r => r != null && r.Id == state.Funding.OperationId), "invalid-funding-debit");
             Require(state.Networks.Count > 0 && state.Networks.Count <= 2048 && state.Stations.Count <= 512 && state.Vessels.Count <= 4096 && state.Receipts.Count <= 1024, "state-limit");
             Require(state.Networks.All(n => n != null) && state.Stations.All(s => s != null) && state.Vessels.All(v => v != null) && state.Receipts.All(r => r != null), "null-state-item");
             Require(state.Networks.Select(n => n.Frequency).Distinct().Count() == state.Networks.Count, "duplicate-frequency");

@@ -52,5 +52,8 @@ public static class Program
     {
         public List<string> Editors { get; set; } = new List<string>();
         public List<string> Bodies { get; set; } = new List<string> { "Sun", "Moho", "Eve", "Gilly", "Kerbin", "Mun", "Minmus", "Duna", "Ike", "Dres", "Jool", "Laythe", "Vall", "Tylo", "Bop", "Pol", "Eeloo" };
+        public List<int> StationCosts { get; set; } = new List<int> { 100000, 200000, 500000 };
+        public List<double> StationPowers { get; set; } = new List<double> { 5e8, 20e9, 80e9 };
+        public List<double> KscPowers { get; set; } = new List<double> { 2e9, 50e9, 250e9 };
     }
 }

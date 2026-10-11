@@ -1,5 +1,17 @@
 # Histórico de versões
 
+## 0.1.3 — experimental
+
+- Corrige unknown-antenna em naves anteriores à instalação do CNC: deriva módulos MM a partir das peças confiáveis do servidor, registra o lote na inicialização e materializa os campos aceitos no overlay de protos.
+- Mantém locks, validação da topologia completa, índices e referências; cada edição consulta o proto uma vez.
+- Restaura baseline após edição especulativa/rejeição. Log distingue accepted, rejected e restored-after-rejection.
+- Acrescenta upgrades de estações, inclusive carreira, com saldo/custo validados, journal recuperável e recibo idempotente. Bloqueia mudança de nível pelo DTO genérico de estação.
+- Compara custos/potências no handshake e verifica a lista de estações do cliente.
+- Conserva preferências visuais no cliente, protege ferramentas contra revisão antiga e atualiza imagens de nível em diálogos de upgrade abertos.
+- Preserva reconstrução de LockList com topologia nova; limpa metadados de naves ausentes após 30 segundos. Corrige o corpo original ao desativar override de posição.
+- Acrescenta inventário CNC 1.5.7 e testes de registro legado, fraude de peças/índices, journal, saldo, recuperação, preferências e leitura de universo sem editar a origem.
+
+
 ## 0.1.2 experimental — 2026-10-10
 
 - Remove serialização JSON e SHA-256 das comparações periódicas do cliente; compara os campos diretamente.

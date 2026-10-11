@@ -49,6 +49,16 @@ public static class Program
             if (target.GetParameters()[0].Name != "validScenario") throw new Exception("Harmony parameter mismatch");
             var copy = Method(cnc, "CommNetConstellation.CommNetLayer.CNCCommNetHome", "copyOf");
             if (copy.GetParameters()[0].Name != "stockHome") throw new Exception("Harmony parameter mismatch");
+            foreach (var name in new[] { "hostStation", "currentTexture", "nextTexture" }) Field(cnc, "CommNetConstellation.UI.GroundStationBuildDialog", name);
+            Method(cnc, "CommNetConstellation.UI.GroundStationBuildDialog", "getLevelTexture");
+            foreach (var name in new[] { "GroundStationUpgradeableCosts", "GroundStationUpgradeablePowers", "KSCStationPowers" }) Field(cnc, "CommNetConstellation.Settings", name);
+            Method(cnc, "CommNetConstellation.UI.VesselMgtTools.VanillaFreqTool", "updateClick");
+            Method(cnc, "CommNetConstellation.UI.VesselMgtTools.IndepAntennaFreqTool", "updateAntennaFreq");
+            Method(cnc, "CommNetConstellation.UI.VesselMgtTools.AntennaSelectionTool", "vesselAntennaSelected");
+            Method(cnc, "CommNetConstellation.UI.VesselMgtTools.AntennaSelectionTool", "toggleAllAntennas");
+            Method(cnc, "CommNetConstellation.UI.VesselMgtTools.AbstractMgtTool", "precompute");
+            var modes = Enum.GetNames(cnc.GetType("CommNetConstellation.CommNetLayer.CNCCommNetVessel+FrequencyListOperation", true));
+            if (!modes.SequenceEqual(new[] { "AutoBuild", "LockList" })) throw new Exception("CNC mode coverage mismatch"); count++;
             var abi = ksp.GetType("KSPScenarioType", true); if (abi.GetField("ModuleType", flags) == null && abi.GetProperty("ModuleType", flags) == null) throw new Exception("ModuleType missing"); count++;
             Console.WriteLine("PASS ABI: " + count + " vinculos em DLLs instaladas; sem executar Unity/KSP."); return 0;
         }

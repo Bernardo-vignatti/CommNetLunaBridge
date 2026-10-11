@@ -7,6 +7,7 @@
     <Reference Include="UnityEngine"><HintPath>$(KspRoot)\KSP_x64_Data\Managed\UnityEngine.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(KspRoot)\KSP_x64_Data\Managed\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(KspRoot)\KSP_x64_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(KspRoot)\KSP_x64_Data\Managed\UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="CommNetConstellation"><HintPath>$(KspRoot)\GameData\CommNetConstellation\Plugins\CommNetConstellation.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="LmpClient"><HintPath>$(KspRoot)\GameData\LunaMultiplayer\Plugins\LmpClient.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Lidgren.Network"><HintPath>$(KspRoot)\GameData\LunaMultiplayer\Plugins\Lidgren.Network.dll</HintPath><Private>false</Private></Reference>

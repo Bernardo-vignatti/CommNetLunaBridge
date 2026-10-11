@@ -1,3 +1,17 @@
+# Relatório de atualização — 0.1.3
+
+Corrigido o registro de antenas anteriores à instalação do CNC. O servidor deriva módulos das peças do universo confiável; o cliente não pode inventar a peça/índice. A auditoria em cópia temporária do estado existente encontrou 18 naves com rádio entre 30 arquivos e confirmou edição nas 18. A origem foi preservada.
+
+Acrescentados upgrades em carreira com transação recuperável, validação de custos/potências, rollback de rejeições, guardas para ferramentas em revisão antiga, preferências locais, limpeza de metadados e reconstrução de listas travadas com topologia nova. Detalhes em [COBERTURA-CONSTELLATION.md](COBERTURA-CONSTELLATION.md).
+
+Verificação: 62 testes de núcleo/migração, 24 do plugin, 49 vínculos ABI, 18 de JSON e 16 no Mono do KSP; compilação sem avisos/erros. O plugin usa clientes sintéticos. A auditoria lê a origem e edita cópias temporárias. Dados privados não integram fonte/pacote.
+
+A sessão anterior confirmou a melhora de desempenho da 0.1.2 e rejeições unknown-antenna. A 0.1.3 precisa de confirmação de UI/física no jogo, especialmente dois clientes e economia de carreira junto de contratos/lançamentos. A implementação cobre os caminhos identificados no CNC 1.5.7; a evidência atual não permite garantir 100% de funcionamento.
+
+---
+
+## Histórico técnico até a 0.1.2
+
 # Relatório — 10/10/2026
 
 Foi implementado um bridge experimental de cliente e plugin de servidor. Este repositório contém uma exportação revisada para distribuição, com histórico inicial novo e dados pessoais removidos. O universo usado no desenvolvimento permanece privado.
@@ -37,6 +51,6 @@ A 0.1.2 corrige custo de polling: comparações de catálogo/estações/naves pa
 
 A primeira tentativa no KSP mostrou que a 0.1.0 carregava, mas falhava ao enviar o handshake por ausência de `System.Runtime.Serialization` no perfil Mono do jogo. O servidor encerrava a conexão ao expirar o prazo. A 0.1.1 usa o JsonFx já instalado pelo Luna no cliente, mantendo o serializador e o formato persistido do servidor. Os testes acima verificam a correção no runtime; a conexão e as mudanças de cena ainda precisam ser confirmadas após reiniciar o jogo com a atualização. Os logs privados não integram o repositório.
 
-Executar todos os casos de [TESTE-MULTIPLAYER.md](TESTE-MULTIPLAYER.md) em cópias isoladas. Especialmente: bloqueio físico de comunicação por frequência, UI aberta, naves não carregadas, atrasos entre canais do Luna, reconstrução durante docking, geometria de estações, reconexões repetidas e reinstanciação correta da rede. Upgrades de estações em carreira ficam bloqueados nesta versão. Criação/exclusão de estações, coleta de metadados de naves removidas e persistência adicional de preferências locais não foram implementadas. Os demais limites estão no README.
+Executar todos os casos de [TESTE-MULTIPLAYER.md](TESTE-MULTIPLAYER.md) em cópias isoladas. Especialmente: bloqueio físico de comunicação por frequência, UI aberta, naves não carregadas, atrasos entre canais do Luna, reconstrução durante docking, geometria de estações, reconexões repetidas e reinstanciação correta da rede. Até a 0.1.2, upgrades em carreira, limpeza de metadados e persistência adicional de preferências eram pendentes. A 0.1.3 implementa esses caminhos. Criação/exclusão livre de estações não existe na UI CNC 1.5.7. Os demais limites estão no README.
 
 O pacote é revisável e compilável. A implementação ainda não pode ser descrita como integração plenamente validada no jogo.

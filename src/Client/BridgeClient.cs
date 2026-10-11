@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.IO;
 using CommNetConstellation;
 using CommNetConstellation.CommNetLayer;
 using CommNetConstellation.UI;
@@ -35,6 +36,10 @@ namespace CommNetLunaBridge
         private readonly HashSet<Guid> vesselEdits = new HashSet<Guid>();
         private readonly Dictionary<object, long> editRevisions = new Dictionary<object, long>();
         private readonly List<ConstellationControlDialog> dialogs = new List<ConstellationControlDialog>();
+        private readonly List<GroundStationBuildDialog> buildDialogs = new List<GroundStationBuildDialog>();
+        private ViewPreferences views = new ViewPreferences();
+        private bool viewsInitialized;
+        private string ViewPath => Path.Combine(KSPUtil.ApplicationRootPath, "GameData", "CommNetLunaBridge", "PluginData", "view.cfg");
         private readonly Dictionary<string, NativeStation> nativeStations = new Dictionary<string, NativeStation>();
         private sealed class NativeStation { public CelestialBody Body; public double Latitude, Longitude, Altitude; }
         private readonly Stopwatch clock = Stopwatch.StartNew();
@@ -62,6 +67,8 @@ namespace CommNetLunaBridge
                 if (cnc != "1.5.7" || typeof(MainSystem).Assembly.GetName().Version.ToString() != "0.29.2.0")
                     throw new InvalidOperationException("Este pacote exige Constellation 1.5.7 e Luna 0.29.2.");
                 harmony = new Harmony("CommNetLunaBridge.v1"); InstallGuards();
+                try { if (File.Exists(ViewPath)) { views = ViewPreferences.Load(ViewPath); viewsInitialized = true; } }
+                catch (Exception e) { Log("status=view-preferences-load-failed reason=" + e.Message); }
                 Log("status=loaded bridge=" + Wire.Version + " cnc=" + cnc);
             }
             catch (Exception e) { broken = true; Log("status=disabled reason=" + e.Message); }
@@ -91,7 +98,8 @@ namespace CommNetLunaBridge
                 {
                     if (firstHello == 0) firstHello = clock.ElapsedMilliseconds;
                     nextHello = clock.ElapsedMilliseconds + 3000;
-                    Send(new Packet { Kind = "hello", ClientVersion = Wire.Version, LmpVersion = typeof(MainSystem).Assembly.GetName().Version.ToString(), CncVersion = FileVersionInfo.GetVersionInfo(typeof(Constellation).Assembly.Location).FileVersion });
+                    Send(new Packet { Kind = "hello", ClientVersion = Wire.Version, LmpVersion = typeof(MainSystem).Assembly.GetName().Version.ToString(), CncVersion = FileVersionInfo.GetVersionInfo(typeof(Constellation).Assembly.Location).FileVersion,
+                        StationCosts = CNCSettings.Instance.GroundStationUpgradeableCosts.ToList(), StationPowers = CNCSettings.Instance.GroundStationUpgradeablePowers.ToList(), KscPowers = CNCSettings.Instance.KSCStationPowers.ToList() });
                 }
                 if (official == null && MainSystem.NetworkState == ClientState.Running && firstHello > 0 && clock.ElapsedMilliseconds - firstHello > 15000 && !missingServerNotified)
                 {
@@ -103,6 +111,7 @@ namespace CommNetLunaBridge
                 if (scene == null || scene.groundStations.Count == 0 || HighLogic.CurrentGame == null) return;
                 if (scene != lastScenario)
                 {
+                    RestoreViews(scene);
                     identities.Clear(); observed.Clear(); vesselEdits.Clear(); editRevisions.Clear(); lastScenario = scene;
                     ApplyState(true); Log("revision=" + official.Revision + " status=applied-scene");
                 }
@@ -115,6 +124,7 @@ namespace CommNetLunaBridge
                 }
                 if (clock.ElapsedMilliseconds < nextPoll) return;
                 nextPoll = clock.ElapsedMilliseconds + 250;
+                SaveViews();
                 if (pending == null)
                 {
                     var operation = FindChange();
@@ -154,7 +164,8 @@ namespace CommNetLunaBridge
         private static void Ignore(List<string> list, HashSet<string> added, string name) { if (!list.Contains(name)) { list.Add(name); added.Add(name); } }
         private void ResetSession()
         {
-            official = null; pending = null; lastScenario = null; identities.Clear(); observed.Clear(); vesselEdits.Clear(); editRevisions.Clear(); dialogs.Clear(); nativeStations.Clear(); globalEditor = false; nextHello = 0; firstHello = 0; missingServerNotified = false;
+            SaveViews();
+            official = null; pending = null; lastScenario = null; identities.Clear(); observed.Clear(); vesselEdits.Clear(); editRevisions.Clear(); dialogs.Clear(); buildDialogs.Clear(); nativeStations.Clear(); globalEditor = false; nextHello = 0; firstHello = 0; missingServerNotified = false;
             timingSamples = 0; timingTicks = 0; timingMax = 0;
             while (incoming.TryDequeue(out _)) { }
             foreach (var name in addedSendIgnores) IgnoredScenarios.IgnoreSend.Remove(name);
@@ -187,6 +198,8 @@ namespace CommNetLunaBridge
             if (pending != null && packet.OperationId == pending.Operation.Id)
             {
                 if (packet.Status == "rejected") Notify("CNC-LMP: alteracao rejeitada (" + packet.Reason + "). Estado atualizado; tente novamente.");
+                else if (packet.Status == "accepted") Notify("CNC-LMP: alteracao confirmada pelo servidor.");
+                Log("operation=" + pending.Operation.Kind + " operationId=" + packet.OperationId + " status=" + packet.Status + " reason=" + packet.Reason);
                 pending = null;
             }
             if (changed || packet.Status == "rejected")
@@ -194,7 +207,7 @@ namespace CommNetLunaBridge
                 if (ApplyState(true))
                 {
                     RefreshDialogs();
-                    Log("revision=" + official.Revision + " status=applied operationId=" + packet.OperationId);
+                    Log("revision=" + official.Revision + " status=" + (packet.Status == "rejected" ? "restored-after-rejection" : "applied") + " operationId=" + packet.OperationId);
                 }
                 else Log("revision=" + official.Revision + " status=received-awaiting-scene");
             }
@@ -250,9 +263,12 @@ namespace CommNetLunaBridge
             if (official == null) return false;
             var scene = CNCCommNetScenario.Instance;
             if (scene == null || scene.groundStations.Count == 0) return false;
+            if (!new HashSet<string>(scene.groundStations.Select(s => s.ID)).SetEquals(official.Stations.Select(s => s.Id)))
+                throw new InvalidOperationException("Estacoes do cliente diferem do servidor; confira configuracoes CNC/planetas e migracao.");
             Applying = true;
             try
             {
+                SaveViews();
                 var list = new List<Constellation>(); var nextIds = new Dictionary<Constellation, string>();
                 foreach (var entry in official.Networks.OrderBy(n => n.Frequency))
                 {
@@ -260,6 +276,7 @@ namespace CommNetLunaBridge
                     if (existing == null) existing = scene.constellations.FirstOrDefault(c => !identities.ContainsKey(c) && c.frequency == entry.Frequency);
                     if (existing == null) existing = new Constellation();
                     existing.frequency = (short)entry.Frequency; existing.name = entry.Name; existing.color = Color(entry.Color);
+                    if (views.Visibility.TryGetValue(entry.Id, out var visible)) existing.visibility = visible;
                     list.Add(existing); nextIds[existing] = entry.Id;
                 }
                 scene.constellations.Clear(); scene.constellations.AddRange(list); identities.Clear(); foreach (var pair in nextIds) identities.Add(pair.Key, pair.Value);
@@ -298,14 +315,16 @@ namespace CommNetLunaBridge
                     var entry = official.Vessels.FirstOrDefault(v => v.Id == id);
                     if (entry == null)
                     {
-                        // Establish a baseline once while awaiting the normal Luna snapshot.
-                        if (force || !observed.ContainsKey(id)) observed[id] = CaptureVessel(vessel, connection);
+                        // An unknown vessel still has a pre-edit baseline. Do not
+                        // promote a rejected speculative edit to that baseline.
+                        if (force && observed.TryGetValue(id, out var baseline)) ApplyVessel(vessel, baseline, false, Topology.SameParts(CaptureVessel(vessel, connection), baseline));
+                        if (!observed.ContainsKey(id)) observed[id] = CaptureVessel(vessel, connection);
                         continue;
                     }
                     var current = CaptureVessel(vessel, connection);
                     if (force || !StateComparison.Same(current, entry))
                     {
-                        ApplyVessel(vessel, entry, force);
+                        ApplyVessel(vessel, entry, force, Topology.SameParts(current, entry));
                         current = CaptureVessel(vessel, connection);
                     }
                     observed[entry.Id] = current;
@@ -325,7 +344,7 @@ namespace CommNetLunaBridge
             station.OverrideLatLongAlt = entry.OverridePosition; station.CustomLatitude = entry.Latitude; station.CustomLongitude = entry.Longitude; station.CustomAltitude = entry.Altitude; station.CustomCelestialBody = entry.Body;
             station.replaceFrequencies(entry.Frequencies.Select(f => (short)f).ToList());
             nativeStations.TryGetValue(station.ID, out var native);
-            var body = !string.IsNullOrEmpty(entry.Body) ? FlightGlobals.Bodies.FirstOrDefault(b => b.name == entry.Body) : native?.Body ?? station.GetComponentInParent<CelestialBody>();
+            var body = entry.OverridePosition && !string.IsNullOrEmpty(entry.Body) ? FlightGlobals.Bodies.FirstOrDefault(b => b.name == entry.Body) : native?.Body ?? station.GetComponentInParent<CelestialBody>();
             if (body == null) throw new InvalidOperationException("Corpo celeste ausente: " + entry.Body);
             AccessTools.Field(typeof(CommNet.CommNetHome), "body").SetValue(station, body);
             if (entry.OverridePosition)
@@ -362,7 +381,7 @@ namespace CommNetLunaBridge
             if (entry.Mode == "LockList") foreach (var f in connection.getFrequencyList().OrderBy(f => f)) { entry.Frequencies.Add(f); entry.Powers.Add(connection.getMaxComPower(f)); }
             return entry;
         }
-        private static void ApplyVessel(Vessel vessel, VesselEntry entry, bool force = false)
+        private static void ApplyVessel(Vessel vessel, VesselEntry entry, bool force = false, bool sameParts = true)
         {
             if (!(vessel.connection is CNCCommNetVessel connection)) return;
             bool changed = false;
@@ -393,7 +412,7 @@ namespace CommNetLunaBridge
             }
             var mode = (CNCCommNetVessel.FrequencyListOperation)Enum.Parse(typeof(CNCCommNetVessel.FrequencyListOperation), entry.Mode);
             if (connection.FreqListOperation != mode) { connection.FreqListOperation = mode; changed = true; }
-            if (entry.Mode == "LockList")
+            if (entry.Mode == "LockList" && sameParts)
             {
                 var keys = AccessTools.Field(typeof(CNCCommNetVessel), "FreqDictionaryKeys");
                 var powers = AccessTools.Field(typeof(CNCCommNetVessel), "FreqDictionaryValues");
@@ -425,6 +444,11 @@ namespace CommNetLunaBridge
             Patch(typeof(GroundStationBuildDialog), "onClickUpgrade", nameof(StationBuildGuard));
             Patch(typeof(AntennaSetupDialog), "updateAction", nameof(AntennaDialogGuard));
             Patch(typeof(CommNetConstellation.UI.VesselMgtTools.UpdateListTool), "ListOperationSelected", nameof(ToolGuard));
+            Patch(typeof(CommNetConstellation.UI.VesselMgtTools.VanillaFreqTool), "updateClick", nameof(ToolGuard));
+            Patch(typeof(CommNetConstellation.UI.VesselMgtTools.IndepAntennaFreqTool), "updateAntennaFreq", nameof(ToolGuard));
+            Patch(typeof(CommNetConstellation.UI.VesselMgtTools.AntennaSelectionTool), "vesselAntennaSelected", nameof(ToolGuard));
+            Patch(typeof(CommNetConstellation.UI.VesselMgtTools.AntennaSelectionTool), "toggleAllAntennas", nameof(ToolGuard));
+            harmony.Patch(AccessTools.Method(typeof(CommNetConstellation.UI.VesselMgtTools.AbstractMgtTool), "precompute"), postfix: new HarmonyMethod(typeof(BridgeClient), nameof(TrackToolRevision)));
             // Global remaps must be executed by the server, never by the initiating client's vessel loop.
             Patch(typeof(CNCCommNetVessel), "replaceAllFrequencies", nameof(RemapGuard));
             foreach (var method in new[] { "updateFrequency", "toggleAntenna", "addToFreqList", "removeFromFreqList", "clearFreqList" }) Patch(typeof(CNCCommNetVessel), method, nameof(VesselGuard));
@@ -432,6 +456,7 @@ namespace CommNetLunaBridge
             harmony.Patch(AccessTools.Method(typeof(AntennaSetupDialog), "updateAction"), postfix: new HarmonyMethod(typeof(BridgeClient), nameof(MarkAntennaEdit)));
             harmony.Patch(AccessTools.Method(typeof(CommNetConstellation.UI.VesselMgtTools.UpdateListTool), "ListOperationSelected"), postfix: new HarmonyMethod(typeof(BridgeClient), nameof(MarkToolEdit)));
             Patch(typeof(AbstractDialog), "launch", nameof(DialogGuard), new[] { typeof(object[]) });
+            harmony.Patch(AccessTools.Method(typeof(AbstractDialog), "launch", new[] { typeof(object[]) }), postfix: new HarmonyMethod(typeof(BridgeClient), nameof(TrackBuildDialog)));
             var ctor = AccessTools.Constructor(typeof(ConstellationControlDialog), new[] { typeof(string) });
             harmony.Patch(ctor, postfix: new HarmonyMethod(typeof(BridgeClient), nameof(TrackDialog)));
             harmony.Patch(AccessTools.Method(typeof(CNCCommNetHome), "copyOf"), postfix: new HarmonyMethod(typeof(BridgeClient), nameof(CaptureNativeStation)));
@@ -469,7 +494,12 @@ namespace CommNetLunaBridge
         {
             var b = Instance; if (b == null || !b.Active || b.Applying) return true;
             var connection = AccessTools.Field(__instance.GetType(), "cncVessel").GetValue(__instance) as CNCCommNetVessel;
-            return connection != null && VesselGuard(connection);
+            return connection != null && VesselGuard(connection) && DraftCurrent(__instance);
+        }
+        private static void TrackToolRevision(object __instance)
+        {
+            var b = Instance;
+            if (b != null && b.Active && b.official != null) b.editRevisions[__instance] = b.official.Revision;
         }
         private static void MarkVesselEdit(CNCCommNetVessel __instance)
         {
@@ -487,9 +517,18 @@ namespace CommNetLunaBridge
         }
         private static bool StationBuildGuard(object __instance)
         {
-            if (Instance == null || !Instance.Active || Instance.Applying) return true;
-            if (HighLogic.CurrentGame?.Mode == Game.Modes.CAREER) { Notify("CNC-LMP 0.1: upgrades de estacao em carreira nao suportados."); return false; }
-            return GlobalGuard(__instance);
+            var b = Instance;
+            if (b == null || !b.Active || b.Applying) return true;
+            if (!GlobalGuard(__instance)) return false;
+            var station = AccessTools.Field(typeof(GroundStationBuildDialog), "hostStation").GetValue(__instance) as CNCCommNetHome;
+            if (station == null || station.isKSC || station.TechLevel >= 3) return false;
+            var operation = new Operation { Kind = "upgrade", Target = station.ID, Epoch = b.official.Epoch, BaseRevision = b.official.Revision };
+            b.pending = new Packet { Kind = "operation", Operation = operation }; b.pendingSent = b.clock.ElapsedMilliseconds;
+            b.Send(b.pending);
+            Log("operation=upgrade operationId=" + operation.Id + " revision=" + b.official.Revision + " status=requested");
+            // The native action would charge locally before confirmation. The
+            // server commits the upgrade and sends the normal Luna funds update.
+            return false;
         }
         private static bool DraftCurrent(object dialog)
         {
@@ -513,6 +552,27 @@ namespace CommNetLunaBridge
             __result = false; return false;
         }
         private static void TrackDialog(ConstellationControlDialog __instance) { Instance?.dialogs.Add(__instance); }
+        private static void TrackBuildDialog(AbstractDialog __instance)
+        { if (__instance is GroundStationBuildDialog dialog && Instance != null && !Instance.buildDialogs.Contains(dialog)) Instance.buildDialogs.Add(dialog); }
+        private void RestoreViews(CNCCommNetScenario scene)
+        {
+            if (!viewsInitialized) return;
+            if (Enum.TryParse(views.Tracking, out CNCCommNetUI.CustomDisplayMode tracking) && Enum.IsDefined(typeof(CNCCommNetUI.CustomDisplayMode), tracking)) CNCCommNetUI.CustomModeTrackingStation = tracking;
+            if (Enum.TryParse(views.Flight, out CNCCommNetUI.CustomDisplayMode flight) && Enum.IsDefined(typeof(CNCCommNetUI.CustomDisplayMode), flight)) CNCCommNetUI.CustomModeFlightMap = flight;
+            scene.hideGroundStations = views.HideStations; CNCSettings.Instance.LegacyOrbitLineColor = views.LegacyOrbit;
+        }
+        private void SaveViews()
+        {
+            var scene = CNCCommNetScenario.Instance;
+            if (official == null || scene == null || scene != lastScenario) return;
+            string tracking = CNCCommNetUI.CustomModeTrackingStation.ToString(), flight = CNCCommNetUI.CustomModeFlightMap.ToString();
+            bool dirty = !viewsInitialized || views.Tracking != tracking || views.Flight != flight || views.HideStations != scene.hideGroundStations || views.LegacyOrbit != CNCSettings.Instance.LegacyOrbitLineColor;
+            views.Tracking = tracking; views.Flight = flight; views.HideStations = scene.hideGroundStations; views.LegacyOrbit = CNCSettings.Instance.LegacyOrbitLineColor; viewsInitialized = true;
+            foreach (var pair in identities)
+                if (scene.constellations.Contains(pair.Key) && (!views.Visibility.TryGetValue(pair.Value, out var visible) || visible != pair.Key.visibility)) { views.Visibility[pair.Value] = pair.Key.visibility; dirty = true; }
+            if (views.Visibility.Count > 4096) foreach (var id in views.Visibility.Keys.Where(id => !official.Networks.Any(n => n.Id == id)).Take(views.Visibility.Count - 4096).ToArray()) views.Visibility.Remove(id);
+            if (dirty) try { views.Save(ViewPath); } catch (Exception e) { Log("status=view-preferences-save-failed reason=" + e.Message); }
+        }
         private void RefreshDialogs()
         {
             foreach (var dialog in dialogs.ToArray())
@@ -521,6 +581,20 @@ namespace CommNetLunaBridge
                 if (popup == null) { dialogs.Remove(dialog); continue; }
                 var type = AccessTools.Field(typeof(ConstellationControlDialog), "currentContentType").GetValue(dialog);
                 AccessTools.Method(typeof(ConstellationControlDialog), "displayContentLayout").Invoke(dialog, new[] { type });
+            }
+            foreach (var dialog in buildDialogs.ToArray())
+            {
+                var popup = AccessTools.Field(typeof(AbstractDialog), "popupDialog").GetValue(dialog) as PopupDialog;
+                if (popup == null) { buildDialogs.Remove(dialog); continue; }
+                var station = (CNCCommNetHome)AccessTools.Field(typeof(GroundStationBuildDialog), "hostStation").GetValue(dialog);
+                foreach (var name in new[] { "currentTexture", "nextTexture" })
+                {
+                    var widget = (DialogGUIImage)AccessTools.Field(typeof(GroundStationBuildDialog), name).GetValue(dialog);
+                    if (widget?.uiItem == null) continue;
+                    short level = name == "currentTexture" ? station.TechLevel : (short)Math.Min(3, station.TechLevel + 1);
+                    widget.uiItem.GetComponent<UnityEngine.UI.RawImage>().texture = (Texture2D)AccessTools.Method(typeof(GroundStationBuildDialog), "getLevelTexture").Invoke(dialog, new object[] { level });
+                }
+                editRevisions[dialog] = official.Revision;
             }
         }
         private static float[] Components(Color color) { return new[] { color.r, color.g, color.b, color.a }; }

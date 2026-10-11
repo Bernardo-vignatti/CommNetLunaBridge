@@ -15,12 +15,12 @@ static class Program
     static Packet Sample()
     {
         var state = new NetworkState { Revision = 1234567890123L };
-        state.Networks.Add(new NetworkEntry { Id = "network", Frequency = 42, Name = "Rede órbita 中文 \"\\\n", Color = new[] { 0.1f, 0.2f, 0.3f, 1f } });
+        state.Networks.Add(new NetworkEntry { Id = "network", Frequency = 42, Name = "Rede órbita ä¸­æ–‡ \"\\\n", Color = new[] { 0.1f, 0.2f, 0.3f, 1f } });
         state.Stations.Add(new StationEntry { Id = "station", Latitude = -12.3456789012345, Longitude = 70.25, Altitude = 1e8, OverridePosition = true, Frequencies = new System.Collections.Generic.List<int> { 0, 42 } });
         var vessel = new VesselEntry { Id = "vessel", Powers = new System.Collections.Generic.List<double> { 1e20, 0.00001 } };
         vessel.Antennas.Add(new AntennaEntry { Part = uint.MaxValue, Frequency = 42, InUse = true });
         state.Vessels.Add(vessel);
-        return new Packet { Kind = "snapshot", State = state };
+        return new Packet { Kind = "snapshot", State = state, StationCosts = new System.Collections.Generic.List<int> { 100000, 200000, 500000 }, StationPowers = new System.Collections.Generic.List<double> { 5e8, 20e9, 80e9 }, KscPowers = new System.Collections.Generic.List<double> { 2e9, 50e9, 250e9 } };
     }
     static void Compatibility()
     {
@@ -56,7 +56,7 @@ static class Program
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("pt-BR");
             var hello = Wire.Clone(new Packet { Kind = "hello", ClientVersion = Wire.Version });
-            Check(hello.Kind == "hello" && hello.ClientVersion == "0.1.2" && hello.State == null && hello.Operation == null);
+            Check(hello.Kind == "hello" && hello.ClientVersion == "0.1.3" && hello.State == null && hello.Operation == null);
             var original = Sample(); var copy = Wire.Clone(original);
             Check(Wire.Same(original, copy));
             Check(StateComparison.Same(original.State.Networks[0], copy.State.Networks[0]) && StateComparison.Same(original.State.Stations[0], copy.State.Stations[0]) && StateComparison.Same(original.State.Vessels[0], copy.State.Vessels[0]));

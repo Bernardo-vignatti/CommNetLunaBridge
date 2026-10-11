@@ -22,7 +22,7 @@ try {
     }
     $manifest = Get-ChildItem -LiteralPath $stage -Recurse -File | Sort-Object FullName | ForEach-Object { (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash + '  ' + $_.FullName.Substring($stage.Length + 1).Replace('\','/') }
     $manifest | Set-Content -LiteralPath "$stage\SHA256SUMS.txt"
-    $zip = Join-Path $PSScriptRoot 'artifacts\CommNetLunaBridge-0.1.2-experimental.zip'
+    $zip = Join-Path $PSScriptRoot 'artifacts\CommNetLunaBridge-0.1.3-experimental.zip'
     Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
     Write-Output $zip
 } finally { Pop-Location }

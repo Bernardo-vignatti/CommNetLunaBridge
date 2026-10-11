@@ -5,6 +5,11 @@ namespace CommNetLunaBridge
 {
     public static class Topology
     {
+        public static bool SameParts(VesselEntry a, VesselEntry b)
+        {
+            if (a.Antennas.Count != b.Antennas.Count) return false;
+            return a.Antennas.Select(p => p.Part + ":" + p.Index).OrderBy(p => p).SequenceEqual(b.Antennas.Select(p => p.Part + ":" + p.Index).OrderBy(p => p));
+        }
         // Called only for authenticated, lock-owning normal Luna vessel snapshots.
         // Preserve accepted settings for existing parts through docking/undocking;
         // initialise new parts from their launched craft, with validated references.
@@ -19,7 +24,15 @@ namespace CommNetLunaBridge
                 if (accepted != null) { part.Frequency = accepted.Frequency; part.InUse = accepted.InUse; part.Name = accepted.Name; }
                 else if (!state.Networks.Any(n => n.Frequency == part.Frequency)) part.Frequency = state.PublicFrequency;
             }
-            if (previous != null) { result.Mode = previous.Mode; result.Frequencies = previous.Frequencies.ToList(); result.Powers = previous.Powers.ToList(); }
+            if (previous != null)
+            {
+                result.Mode = previous.Mode;
+                // CNC explicitly rebuilds LockList on staging. A changed physical
+                // topology may supply that rebuilt dictionary; a stale ordinary
+                // snapshot of the same parts still cannot overwrite accepted data.
+                if (SameParts(previous, incoming) || incoming.Mode != "LockList")
+                { result.Frequencies = previous.Frequencies.ToList(); result.Powers = previous.Powers.ToList(); }
+            }
             else if (result.Mode == "LockList")
             {
                 // A new vessel's explicit list is accepted only if every reference is valid.

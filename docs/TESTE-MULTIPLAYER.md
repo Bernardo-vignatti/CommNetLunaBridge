@@ -28,3 +28,14 @@ Execute em um servidor de teste com cópia do universo e dois clientes KSP com o
 Colete `KSP.log` de A/B, logs `[CNC-LMP]` do servidor e cópia de `Universe/CommNetLunaBridge/state.json` após as confirmações. Examine o cenário projetado e protos normais de nave, lembrando que o estado dedicado é a autoridade. Compare estado ativo com persistido. Teste reconectar somente B, mantendo servidor e A ligados, antes de testar reinício do servidor.
 
 Qualquer falha física, divergência de revisão, loop de operações ou substituição da rede invalida a promoção para o servidor de uso. Registre a reprodução e corrija antes de concluir compatibilidade.
+
+## Regressões obrigatórias da 0.1.3
+
+1. Nave criada antes do CNC: editar nome/frequência de antena e confirmar accepted nos dois lados. Sem unknown-antenna para rádio existente.
+2. Confirmar valor no segundo cliente e após reconectar/reiniciar. Peça/índice falso ou falta de lock devem rejeitar; cliente restaura valor anterior e registra restored-after-rejection.
+3. Abrir ferramenta, mudar revisão por outro cliente e tentar salvar rascunho antigo: exigir reabertura/atualização.
+4. Carreira: upgrade com/sem saldo, máximo/KSC, retry/reconexão. Cliente não cobra antes do aceite. Conferir coexistência com lançamento/contrato e dois upgrades concorrentes.
+5. Interromper transação preparada somente em universo descartável. Reiniciar deve completar nível/recibo/Funding antes do handshake. Não apagar journal de universo em uso.
+6. Visibilidade/modos/ocultação/estilo: sair/entrar e conferir persistência apenas no cliente que alterou.
+7. LockList + staging/docking/undocking: conferir lista/potência sobrevivente, identidade física e segundo cliente. Recuperar/destruir nave: limpeza após 30 s ausente no store.
+8. Custos/potências ou lista de estações divergentes: conexão bloqueada com diagnóstico. Igualar configurações CNC/planetas e settings.json antes de repetir.

@@ -19,6 +19,8 @@ namespace CommNetLunaBridge
         public List<StationEntry> Stations { get; set; } = new List<StationEntry>();
         public List<VesselEntry> Vessels { get; set; } = new List<VesselEntry>();
         public List<Receipt> Receipts { get; set; } = new List<Receipt>();
+        // Private commit metadata; removed from client snapshots.
+        public FundingDebit Funding { get; set; }
     }
     public sealed class NetworkEntry
     {
@@ -63,6 +65,12 @@ namespace CommNetLunaBridge
         public string Player { get; set; }
         public string Hash { get; set; }
     }
+    public sealed class FundingDebit
+    {
+        public string OperationId { get; set; }
+        public double Before { get; set; }
+        public double After { get; set; }
+    }
     public sealed class Operation
     {
         public string Id { get; set; } = Guid.NewGuid().ToString("D");
@@ -88,11 +96,14 @@ namespace CommNetLunaBridge
         public string Reason { get; set; }
         public bool CanEditGlobal { get; set; }
         public long Revision { get; set; }
+        public List<int> StationCosts { get; set; }
+        public List<double> StationPowers { get; set; }
+        public List<double> KscPowers { get; set; }
     }
     public static class Wire
     {
         public const string Channel = "CommNetLunaBridge/v1";
-        public const string Version = "0.1.2";
+        public const string Version = "0.1.3";
         public const int MaxBytes = 4 * 1024 * 1024;
         public static byte[] Encode<T>(T value)
         {
